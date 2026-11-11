@@ -174,7 +174,7 @@ function applyReportStatus(data){
  if(hit){
   $("detectedText").textContent=count+" unique Swiper accounts reported an outage in this 5-hour reporting window.";
   setHero("bad","OUTAGE DETECTED","The community report threshold has been reached.");
- }else if(!refreshing){
+ }else{
   setHero("ok","No community outage detected","No active known outage threshold has been reached.");
  }
 }
@@ -219,7 +219,7 @@ async function submitReport(){
   if(data?.accepted)message("Your report has been counted. Thank you for helping monitor Swiper.","good");
   else message("Your account has already reported during this 5-hour window. Your report is already counted.","good");
  }catch(error){message(error.message||"Could not submit your report. Please try again.","bad");}
- finally{button.disabled=false;button.textContent="Report an Outage";}
+ finally{button.disabled=false;button.textContent=currentSession?.user?"Report an Outage":"Sign in to Report an Outage";}
 }
 async function signIn(){
  const email=$("email").value.trim(),password=$("password").value;
