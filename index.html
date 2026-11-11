@@ -83,10 +83,7 @@ button svg,.action-link svg{width:17px;height:17px;flex:none}
  <p id="detail">Loading known outages and community reports.</p>
 </header>
 <div class="actions">
- <button class="secondary" id="refresh" type="button">
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 7v5h-5"/><path d="M4 17v-5h5"/><path d="M5.6 9A7 7 0 0 1 18 6l2 6M4 12l2 6a7 7 0 0 0 12.4-3"/></svg>
-  Refresh
- </button>
+ <button class="secondary" id="refresh" type="button">Check Again</button>
  <a class="action-link" href="https://www.playswiper.com/">
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 17 17 7"/><path d="M7 7h10v10"/></svg>
   Back to Swiper
@@ -119,8 +116,8 @@ button svg,.action-link svg{width:17px;height:17px;flex:none}
  <div class="login-panel" id="loginPanel">
   <div class="field"><label for="email">Swiper account email</label><input id="email" type="email" autocomplete="username" placeholder="you@example.com"></div>
   <div class="field"><label for="password">Password</label><input id="password" type="password" autocomplete="current-password" placeholder="Your Swiper password"></div>
-  <div class="login-actions"><button id="signInButton" type="button">Sign in</button><button class="secondary" id="cancelLogin" type="button">Cancel</button></div>
-  <p id="accountState">Use the same account credentials as Swiper. This status subdomain keeps its own sign-in session.</p>
+  <div class="login-actions"><button id="passkeySignInButton" type="button">Sign in with Passkey</button><button class="secondary" id="signInButton" type="button">Use Password</button><button class="secondary" id="cancelLogin" type="button">Cancel</button></div>
+  <p id="accountState">Use the same Swiper passkey or account credentials you use on playswiper.com.</p>
  </div>
 </section>
 <p id="lastChecked"></p>
@@ -133,7 +130,7 @@ button svg,.action-link svg{width:17px;height:17px;flex:none}
 const SUPABASE_URL="https://upghyzhawctughyojwpo.supabase.co";
 const SUPABASE_KEY="sb_publishable_z70GOIzu3F_xdxdJiVa48A_SqvrA6-b";
 const $=id=>document.getElementById(id);
-const db=window.supabase.createClient(SUPABASE_URL,SUPABASE_KEY,{auth:{autoRefreshToken:true,persistSession:true,detectSessionInUrl:true}});
+const db=window.supabase.createClient(SUPABASE_URL,SUPABASE_KEY,{auth:{autoRefreshToken:true,persistSession:true,detectSessionInUrl:true,experimental:{passkey:true}}});
 let currentSession=null,refreshing=false,detected=false;
 const CHECK_ICON='<path d="m10 28 11 11L45 13" stroke="#18d66b" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>';
 const BAD_ICON='<path d="M16 16 38 38M38 16 16 38" stroke="#ff6666" stroke-width="6" stroke-linecap="round"/>';
@@ -198,7 +195,7 @@ async function loadStatus(){
   $("lastChecked").textContent="Last checked: "+new Date().toLocaleString();
  }finally{
   refreshing=false;button.disabled=false;
-  button.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 7v5h-5"/><path d="M4 17v-5h5"/><path d="M5.6 9A7 7 0 0 1 18 6l2 6M4 12l2 6a7 7 0 0 0 12.4-3"/></svg> Refresh';
+  button.textContent="Check Again";
  }
 }
 function updateAccountUI(){
@@ -221,6 +218,7 @@ async function submitReport(){
  }catch(error){message(error.message||"Could not submit your report. Please try again.","bad");}
  finally{button.disabled=false;button.textContent=currentSession?.user?"Report an Outage":"Sign in to Report an Outage";}
 }
+async function signInWithPasskey(){const button=$("passkeySignInButton");button.disabled=true;button.textContent="Waiting for passkey…";try{const {data,error}=await db.auth.signInWithPasskey();if(error)throw error;currentSession=data.session;updateAccountUI();message("Signed in with your Swiper passkey. You can now report an outage.","good");}catch(error){$("accountState").textContent=error?.message||"Passkey sign-in failed. Check passkey setup and browser support, or use your password.";}finally{button.disabled=false;button.textContent="Sign in with Passkey";}}
 async function signIn(){
  const email=$("email").value.trim(),password=$("password").value;
  if(!email||!password){$("accountState").textContent="Enter your account email and password.";return;}
@@ -234,7 +232,7 @@ async function signIn(){
 }
 $("refresh").addEventListener("click",loadStatus);
 $("reportButton").addEventListener("click",submitReport);
-$("signInButton").addEventListener("click",signIn);
+$("signInButton").addEventListener("click",signIn);$("passkeySignInButton").addEventListener("click",signInWithPasskey);
 $("cancelLogin").addEventListener("click",()=>$("loginPanel").classList.remove("open"));
 $("password").addEventListener("keydown",e=>{if(e.key==="Enter")signIn();});
 db.auth.getSession().then(({data})=>{currentSession=data.session;updateAccountUI();}).catch(()=>updateAccountUI());
