@@ -161,7 +161,7 @@ function renderOutages(rows){
  }
 }
 function applyReportStatus(data){
- const count=Math.max(0,Number(data?.report_count)||0),threshold=11;
+ const count=Math.max(0,Number(data?.report_count)||0),threshold=Math.max(1,Number(data?.threshold)||5);
  const hit=!!data?.outage_detected||count>=threshold;detected=hit;
  $("countValue").textContent=count+" / "+threshold;
  $("progressFill").style.width=Math.min(100,count/threshold*100)+"%";
