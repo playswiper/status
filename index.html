@@ -147,7 +147,7 @@ function renderOutages(rows){
  if(!rows.length){
   const box=document.createElement("div");box.className="empty";
   box.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12 4 4L19 6"/></svg>';
-  const label=document.createElement("span");label.textContent="No known active outages. There are currently no unresolved service notices.";box.append(label);list.append(box);$("outageCount").textContent="0 active";return;
+  const label=document.createElement("span");label.textContent="No known issues. There are currently no active service notices.";box.append(label);list.append(box);$("outageCount").textContent="0 active";return false;
  }
  $("outageCount").textContent=rows.length+" active";
  for(const row of rows){
@@ -159,8 +159,9 @@ function renderOutages(rows){
   if(row.started_at){const time=document.createElement("div");time.className="outage-card-time";const date=new Date(row.started_at);time.textContent="Started: "+(Number.isNaN(date.getTime())?"Time unavailable":date.toLocaleString());body.append(time);}
   card.append(icon,body);list.append(card);
  }
+ return true;
 }
-function applyReportStatus(data){
+function applyReportStatus(data,hasKnownOutages=false){
  const count=Math.max(0,Number(data?.report_count)||0),threshold=Math.max(1,Number(data?.threshold)||5);
  const hit=!!data?.outage_detected||count>=threshold;detected=hit;
  $("countValue").textContent=count+" / "+threshold;
