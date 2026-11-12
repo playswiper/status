@@ -131,7 +131,7 @@ const SUPABASE_URL="https://upghyzhawctughyojwpo.supabase.co";
 const SUPABASE_KEY="sb_publishable_z70GOIzu3F_xdxdJiVa48A_SqvrA6-b";
 const $=id=>document.getElementById(id);
 const db=window.supabase.createClient(SUPABASE_URL,SUPABASE_KEY,{auth:{autoRefreshToken:true,persistSession:true,detectSessionInUrl:true,experimental:{passkey:true}}});
-let currentSession=null,refreshing=false,detected=false;
+let currentSession=null,refreshing=false,detected=false,activeKnownOutages=false;
 const CHECK_ICON='<path d="m10 28 11 11L45 13" stroke="#18d66b" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>';
 const BAD_ICON='<path d="M16 16 38 38M38 16 16 38" stroke="#ff6666" stroke-width="6" stroke-linecap="round"/>';
 function setHero(kind,title,detail){
@@ -161,19 +161,19 @@ function renderOutages(rows){
  }
  return true;
 }
-function applyReportStatus(data,hasKnownOutages=false){
- const count=Math.max(0,Number(data?.report_count)||0),threshold=Math.max(1,Number(data?.threshold)||5);
- const hit=!!data?.outage_detected||count>=threshold;detected=hit;
+function applyReportStatus(data,hasKnownOutages=activeKnownOutages){
+ const count=Math.max(0,Number(data?.report_count)||0),threshold=Math.max(1,Number(data?.threshold)||11);
+ const communityHit=!!data?.outage_detected||count>=threshold,hit=communityHit||hasKnownOutages;detected=hit;
  $("countValue").textContent=count+" / "+threshold;
  $("progressFill").style.width=Math.min(100,count/threshold*100)+"%";
  $("progressTrack").setAttribute("aria-valuenow",String(Math.min(threshold,count)));
  $("countLabel").textContent=hit?"Unique accounts reporting":"Community reports";
  $("detectedPanel").classList.toggle("show",hit);
  if(hit){
-  $("detectedText").textContent=count+" unique Swiper accounts reported an outage in this 5-hour reporting window.";
-  setHero("bad","OUTAGE DETECTED","The community report threshold has been reached.");
+  $("detectedText").textContent=hasKnownOutages?"An active known service issue is listed below.":count+" unique Swiper accounts reported an outage in this 5-hour reporting window.";
+  setHero("bad",hasKnownOutages?"KNOWN ISSUE DETECTED":"OUTAGE DETECTED",hasKnownOutages?"An active service issue is listed below.":"The community report threshold has been reached.");
  }else{
-  setHero("ok","No community outage detected","No active known outage threshold has been reached.");
+  setHero("ok","No known issues","All monitored services are currently clear, with no active known outages.");
  }
 }
 async function loadStatus(){
@@ -186,8 +186,8 @@ async function loadStatus(){
   ]);
   if(outageResult.error)throw outageResult.error;
   if(statusResult.error)throw statusResult.error;
-  renderOutages(outageResult.data||[]);
-  applyReportStatus(statusResult.data);
+  activeKnownOutages=renderOutages(outageResult.data||[]);
+  applyReportStatus(statusResult.data,activeKnownOutages);
   $("lastChecked").textContent="Last checked: "+new Date().toLocaleString();
  }catch(error){
   $("outageCount").textContent="Unavailable";
