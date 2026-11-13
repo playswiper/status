@@ -57,8 +57,8 @@ button svg,.action-link svg{width:17px;height:17px;flex:none}
 .field label{font-size:12px;color:#aaa}
 .field input{width:100%;height:43px;border:1px solid #353535;border-radius:9px;background:#111;color:#fff;padding:0 12px;font:14px "Fredoka",system-ui,sans-serif;outline:none}
 .field input:focus{border-color:#888}
-.login-actions{display:flex;gap:9px}
-.login-actions button{flex:1;min-height:42px}
+.login-actions{display:grid;grid-template-columns:1fr 1fr;gap:9px}
+.login-actions button{min-height:42px}.login-actions button[hidden]{display:none}
 #accountState{font-size:12px;color:#999;margin-top:9px}
 .detected{width:100%;display:none;border:1px solid #873b3b;background:linear-gradient(135deg,#260d0d,#120707);border-radius:14px;padding:15px;margin:0 0 16px}
 .detected.show{display:block}
@@ -112,16 +112,16 @@ button svg,.action-link svg{width:17px;height:17px;flex:none}
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 4v16"/><path d="M4 5h13l-2 4 2 4H4"/></svg>
   Report an Outage
  </h2>
- <p class="report-copy">If Swiper is not working, report it here. Reports count once per account during each 5-hour reporting window. When 11 different accounts report, the page automatically marks an outage as detected.</p>
+ <p class="report-copy">If Swiper is not working, report it here. Each account can report once every 2-hour window. When 3 different accounts report, the page automatically marks an outage as detected.</p>
  <div class="report-count"><span id="countLabel">Community reports</span><strong id="countValue">0 / 11</strong></div>
  <div class="progress-track" role="progressbar" aria-label="Unique outage reports" aria-valuemin="0" aria-valuemax="11" aria-valuenow="0" id="progressTrack"><div class="progress-fill" id="progressFill"></div></div>
  <button id="reportButton" type="button">Report an Outage</button>
  <p id="reportMessage" aria-live="polite"></p>
  <div class="login-panel" id="loginPanel">
-  <div class="field"><label for="email">Swiper account email</label><input id="email" type="email" autocomplete="username" placeholder="you@example.com"></div>
-  <div class="field"><label for="password">Password</label><input id="password" type="password" autocomplete="current-password" placeholder="Your Swiper password"></div>
-  <div id="swiperTurnstile" class="turnstile-wrap" aria-label="Security verification"></div><div class="login-actions"><button id="passkeySignInButton" type="button">Sign in with Passkey</button><button class="secondary" id="signInButton" type="button">Use Password</button><button class="secondary" id="cancelLogin" type="button">Cancel</button></div>
-  <p id="accountState">Use the same Swiper passkey or account credentials you use on playswiper.com.</p>
+  <div class="field"><label for="email">Email address</label><input id="email" type="email" autocomplete="email" placeholder="you@example.com"></div>
+  <p class="report-copy">New here? Enter your email and we will send a secure sign-in link. After confirming it, create a passkey—no password needed.</p>
+  <div id="swiperTurnstile" class="turnstile-wrap" aria-label="Security verification"></div><div class="login-actions"><button id="emailLinkButton" type="button">Email me a sign-in link</button><button class="secondary" id="passkeySignInButton" type="button">Sign in with Passkey</button><button id="registerPasskeyButton" type="button" hidden>Create Passkey</button><button class="secondary" id="cancelLogin" type="button">Cancel</button></div>
+  <p id="accountState">Use a passkey or email link. Passwords are not required.</p>
  </div>
 </section>
 <p id="lastChecked"></p>
@@ -176,7 +176,7 @@ function renderOutages(rows){
  return true;
 }
 function applyReportStatus(data,hasKnownOutages=activeKnownOutages){
- const count=Math.max(0,Number(data?.report_count)||0),threshold=11;
+ const count=Math.max(0,Number(data?.report_count)||0),threshold=3;
  const communityHit=!!data?.outage_detected||count>=threshold,hit=communityHit||hasKnownOutages;detected=hit;
  $("countValue").textContent=count+" / "+threshold;
  $("progressFill").style.width=Math.min(100,count/threshold*100)+"%";
@@ -184,7 +184,7 @@ function applyReportStatus(data,hasKnownOutages=activeKnownOutages){
  $("countLabel").textContent=hit?"Unique accounts reporting":"Community reports";
  $("detectedPanel").classList.toggle("show",hit);
  if(hit){
-  $("detectedText").textContent=hasKnownOutages?"An active known service issue is listed below.":count+" unique Swiper accounts reported an outage in this 5-hour reporting window.";
+  $("detectedText").textContent=hasKnownOutages?"An active known service issue is listed below.":count+" unique Swiper accounts reported an outage in this 2-hour reporting window.";
   setHero("bad",hasKnownOutages?"KNOWN ISSUE DETECTED":"OUTAGE DETECTED",hasKnownOutages?"An active service issue is listed below.":"The community report threshold has been reached.");
  }else{
   setHero("ok","No known issues","All monitored services are currently clear, with no active known outages.");
@@ -217,7 +217,9 @@ function updateAccountUI(){
  const signedIn=!!currentSession?.user;
  $("reportButton").textContent=signedIn?"Report an Outage":"Sign in to Report an Outage";
  $("loginPanel").classList.remove("open");
- $("accountState").textContent=signedIn?"Signed in. Your account can submit one report per reporting window.":"Use the same account credentials as Swiper. This status subdomain keeps its own sign-in session.";
+ $("accountState").textContent=signedIn?"Email verified. Create a passkey to sign in next time without a password.":"Use a passkey or request a secure email sign-in link. No password is needed.";
+ $("registerPasskeyButton").hidden=!signedIn;
+ $("emailLinkButton").textContent=signedIn?"Email link sent":"Email me a sign-in link";
 }
 async function submitReport(){
  if(!currentSession?.user){$("loginPanel").classList.add("open");$("email").focus();message("Sign in with your registered Swiper account to submit a report.","bad");return;}
@@ -229,28 +231,52 @@ async function submitReport(){
   if(countResult.error)throw countResult.error;
   applyReportStatus(countResult.data);
   if(data?.accepted)message("Your report has been counted. Thank you for helping monitor Swiper.","good");
-  else message("Your account has already reported during this 5-hour window. Your report is already counted.","good");
+  else message("Your account has already reported during this 2-hour window. Your report is already counted.","good");
  }catch(error){message(error.message||"Could not submit your report. Please try again.","bad");}
  finally{button.disabled=false;button.textContent=currentSession?.user?"Report an Outage":"Sign in to Report an Outage";}
 }
 let swiperTurnstileWidget=null,swiperTurnstileToken="",swiperTurnstileReady=null;function ensureSwiperTurnstile(){const host=$("swiperTurnstile");if(!host)throw Error("Security verification is unavailable. Reload the page and try again.");if(swiperTurnstileWidget!==null)return Promise.resolve();if(swiperTurnstileReady)return swiperTurnstileReady;swiperTurnstileReady=new Promise((resolve,reject)=>{const render=()=>{if(!window.turnstile){reject(Error("Security verification failed to load. Check your connection and try again."));return}try{swiperTurnstileWidget=window.turnstile.render(host,{sitekey:"0x4AAAAAAF9cX8702IwLD8nj",theme:"dark",callback:token=>{swiperTurnstileToken=token},"expired-callback":()=>{swiperTurnstileToken=""},"error-callback":()=>{swiperTurnstileToken=""}});resolve()}catch(e){reject(e)}};if(window.turnstile){render();return}let tag=document.querySelector('script[data-swiper-turnstile]');if(!tag){tag=document.createElement("script");tag.src="https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit";tag.async=true;tag.defer=true;tag.dataset.swiperTurnstile="1";document.head.appendChild(tag)}tag.addEventListener("load",render,{once:true});tag.addEventListener("error",()=>reject(Error("Could not load security verification.")),{once:true})});return swiperTurnstileReady}async function getSwiperCaptchaToken(){await ensureSwiperTurnstile();if(!swiperTurnstileToken)throw Error("Complete the security check below, then try again.");const token=swiperTurnstileToken;swiperTurnstileToken="";try{window.turnstile.reset(swiperTurnstileWidget)}catch{}return token}
-async function signInWithPasskey(){const button=$("passkeySignInButton");button.disabled=true;button.textContent="Waiting for passkey…";try{const captchaToken=await getSwiperCaptchaToken();const {data,error}=await db.auth.signInWithPasskey({options:{captchaToken}});if(error)throw error;currentSession=data.session;updateAccountUI();message("Signed in with your Swiper passkey. You can now report an outage.","good");}catch(error){$("accountState").textContent=error?.message||"Passkey sign-in failed. Check passkey setup and browser support, or use your password.";}finally{button.disabled=false;button.textContent="Sign in with Passkey";}}
-async function signIn(){
- const email=$("email").value.trim(),password=$("password").value;
- if(!email||!password){$("accountState").textContent="Enter your account email and password.";return;}
- const button=$("signInButton");button.disabled=true;button.textContent="Signing in…";
+
+async function signInWithPasskey(){
+ const button=$("passkeySignInButton");button.disabled=true;button.textContent="Waiting for passkey…";
  try{
-  const captchaToken=await getSwiperCaptchaToken();const {data,error}=await db.auth.signInWithPassword({email,password,options:{captchaToken}});
+  const captchaToken=await getSwiperCaptchaToken();
+  const {data,error}=await db.auth.signInWithPasskey({options:{captchaToken}});
   if(error)throw error;
-  currentSession=data.session;updateAccountUI();message("Signed in. You can now report an outage.","good");
- }catch(error){$("accountState").textContent=error.message||"Sign-in failed. Check your credentials and try again.";}
- finally{button.disabled=false;button.textContent="Sign in";}
+  currentSession=data.session;updateAccountUI();message("Signed in with your passkey. You can now report an outage.","good");
+ }catch(error){$("accountState").textContent=error?.message||"Passkey sign-in failed. Check passkey setup and browser support.";}
+ finally{button.disabled=false;button.textContent="Sign in with Passkey";}
+}
+async function sendEmailSignInLink(){
+ const email=$("email").value.trim();
+ if(!email){$("accountState").textContent="Enter your email address first.";return;}
+ const button=$("emailLinkButton");button.disabled=true;button.textContent="Sending…";
+ try{
+  const captchaToken=await getSwiperCaptchaToken();
+  const {error}=await db.auth.signInWithOtp({email,options:{shouldCreateUser:true,captchaToken}});
+  if(error)throw error;
+  $("accountState").textContent="Check your inbox for the secure sign-in link. Open it on this device to finish signing in, then create your passkey.";
+  message("Secure sign-in link sent. No password was created or requested.","good");
+ }catch(error){$("accountState").textContent=error?.message||"Could not send the sign-in link. Try again in a moment.";}
+ finally{button.disabled=false;button.textContent="Email me a sign-in link";}
+}
+async function registerPasskey(){
+ if(!currentSession?.user){$("accountState").textContent="Open the secure email sign-in link first, then create your passkey.";return;}
+ const button=$("registerPasskeyButton");button.disabled=true;button.textContent="Creating…";
+ try{
+  const {data,error}=await db.auth.registerPasskey();
+  if(error)throw error;
+  button.textContent="Passkey Created ✓";
+  $("accountState").textContent="Your passkey is ready. Next time, choose Sign in with Passkey—no password needed.";
+  message("Passkey registered successfully.","good");
+ }catch(error){$("accountState").textContent=error?.message||"Could not create a passkey. Make sure passkeys are enabled for this site and try again.";button.textContent="Create Passkey";}
+ finally{button.disabled=false;if(button.textContent==="Creating…")button.textContent="Create Passkey";}
 }
 $("refresh").addEventListener("click",loadStatus);
 $("reportButton").addEventListener("click",submitReport);
-$("signInButton").addEventListener("click",signIn);$("passkeySignInButton").addEventListener("click",signInWithPasskey);
+$("emailLinkButton").addEventListener("click",sendEmailSignInLink);$("passkeySignInButton").addEventListener("click",signInWithPasskey);$("registerPasskeyButton").addEventListener("click",registerPasskey);
 $("cancelLogin").addEventListener("click",()=>$("loginPanel").classList.remove("open"));
-$("password").addEventListener("keydown",e=>{if(e.key==="Enter")signIn();});
+$("email").addEventListener("keydown",e=>{if(e.key==="Enter")sendEmailSignInLink();});
 db.auth.getSession().then(({data})=>{currentSession=data.session;updateAccountUI();}).catch(()=>updateAccountUI());
 db.auth.onAuthStateChange((_event,session)=>{currentSession=session;updateAccountUI();});
 loadStatus();
