@@ -119,6 +119,7 @@ button svg,.action-link svg{width:17px;height:17px;flex:none}
  <p id="reportMessage" aria-live="polite"></p>
  <div class="login-panel" id="loginPanel">
   <p class="report-copy" id="authHelp">Swiper Status uses your existing Swiper account. New accounts cannot be created here.</p>
+  <div class="turnstile-wrap" id="statusTurnstile"></div>
   <div class="login-actions">
    <button id="passkeySignInButton" type="button">Sign in with Passkey</button>
    <button class="secondary" id="cancelLogin" type="button">Cancel</button>
@@ -137,7 +138,7 @@ const SUPABASE_URL="https://upghyzhawctughyojwpo.supabase.co";
 const SUPABASE_KEY="sb_publishable_z70GOIzu3F_xdxdJiVa48A_SqvrA6-b";
 const $=id=>document.getElementById(id);
 const db=window.supabase.createClient(SUPABASE_URL,SUPABASE_KEY,{auth:{autoRefreshToken:true,persistSession:true,detectSessionInUrl:true,experimental:{passkey:true}}});
-let currentSession=null,refreshing=false,detected=false,activeKnownOutages=false;
+let currentSession=null,refreshing=false,detected=false,activeKnownOutages=false,statusTurnstileWidget=null,statusTurnstileToken="",statusTurnstileReady=null,statusCaptchaWaiters=[];
 const CHECK_ICON='<path d="m10 28 11 11L45 13" stroke="#18d66b" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>';
 const BAD_ICON='<path d="M16 16 38 38M38 16 16 38" stroke="#ff6666" stroke-width="6" stroke-linecap="round"/>';
 function setHero(kind,title,detail){
@@ -221,10 +222,28 @@ function authErrorText(error){
  if(/user already registered/i.test(raw))return "That email already has an account. Sign in using a passkey registered to that account.";
  return raw;
 }
+async function ensureStatusTurnstile(){
+ if(statusTurnstileWidget!==null)return;
+ if(statusTurnstileReady)return statusTurnstileReady;
+ statusTurnstileReady=new Promise((resolve,reject)=>{
+  const render=()=>{try{const host=$("statusTurnstile");if(!host)throw Error("Security check is unavailable.");statusTurnstileWidget=window.turnstile.render(host,{sitekey:"0x4AAAAAAF9cX8702IwLD8nj",theme:"dark",callback:token=>{statusTurnstileToken=token;for(const waiter of statusCaptchaWaiters.splice(0))waiter.resolve(token)},"expired-callback":()=>{statusTurnstileToken=""},"error-callback":()=>{statusTurnstileToken="";for(const waiter of statusCaptchaWaiters.splice(0))waiter.reject(Error("Security check failed. Please try again."))}});resolve()}catch(error){reject(error)}};
+  if(window.turnstile){render();return}
+  let script=document.querySelector("script[data-status-turnstile]");
+  if(!script){script=document.createElement("script");script.src="https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit";script.async=true;script.defer=true;script.dataset.statusTurnstile="1";document.head.appendChild(script)}
+  script.addEventListener("load",render,{once:true});script.addEventListener("error",()=>reject(Error("Could not load the security check. Check your connection and try again.")),{once:true});
+ });
+ return statusTurnstileReady;
+}
+async function getStatusCaptchaToken(){
+ await ensureStatusTurnstile();
+ if(!statusTurnstileToken)await new Promise((resolve,reject)=>{const waiter={resolve,reject};statusCaptchaWaiters.push(waiter);const timer=setTimeout(()=>{const i=statusCaptchaWaiters.indexOf(waiter);if(i>=0)statusCaptchaWaiters.splice(i,1);reject(Error("Security check timed out. Complete it and try again."))},90000);const done=waiter.resolve;waiter.resolve=value=>{clearTimeout(timer);done(value)};const fail=waiter.reject;waiter.reject=error=>{clearTimeout(timer);fail(error)}});
+ const token=statusTurnstileToken;if(!token)throw Error("Complete the security check, then try again.");statusTurnstileToken="";try{window.turnstile.reset(statusTurnstileWidget)}catch{}return token;
+}
 async function signInWithPasskey(){
- const button=$("passkeySignInButton");button.disabled=true;button.textContent="Waiting for passkey…";
+ const button=$("passkeySignInButton");button.disabled=true;button.textContent="Complete security check…";
  try{
-  const {data,error}=await db.auth.signInWithPasskey();
+  const captchaToken=await getStatusCaptchaToken();button.textContent="Waiting for passkey…";
+  const {data,error}=await db.auth.signInWithPasskey({options:{captchaToken}});
   if(error)throw error;
   currentSession=data.session;updateAccountUI();message("Signed in with your passkey. You can now report an outage.","good");
  }catch(error){$("accountState").textContent=authErrorText(error);}
