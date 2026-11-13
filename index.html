@@ -118,10 +118,19 @@ button svg,.action-link svg{width:17px;height:17px;flex:none}
  <button id="reportButton" type="button">Report an Outage</button>
  <p id="reportMessage" aria-live="polite"></p>
  <div class="login-panel" id="loginPanel">
+  <div class="field" id="usernameField" hidden><label for="username">Username</label><input id="username" type="text" autocomplete="username" maxlength="24" placeholder="Choose a username"></div>
   <div class="field"><label for="email">Email address</label><input id="email" type="email" autocomplete="email" placeholder="you@example.com"></div>
-  <p class="report-copy">New here? Enter your email and we will send a secure sign-in link. After confirming it, create a passkey—no password needed.</p>
-  <div id="swiperTurnstile" class="turnstile-wrap" aria-label="Security verification"></div><div class="login-actions"><button id="emailLinkButton" type="button">Email me a sign-in link</button><button class="secondary" id="passkeySignInButton" type="button">Sign in with Passkey</button><button id="registerPasskeyButton" type="button" hidden>Create Passkey</button><button class="secondary" id="cancelLogin" type="button">Cancel</button></div>
-  <p id="accountState">Use a passkey or email link. Passwords are not required.</p>
+  <div class="field" id="passwordField" hidden><label for="password">Password</label><input id="password" type="password" autocomplete="new-password" minlength="8" placeholder="At least 8 characters"></div>
+  <p class="report-copy" id="authHelp">Sign in with a passkey, or create an account with a username, email, and password. You can add a passkey after creating your account.</p>
+  <div id="swiperTurnstile" class="turnstile-wrap" aria-label="Security verification"></div>
+  <div class="login-actions">
+   <button class="secondary" id="passkeySignInButton" type="button">Sign in with Passkey</button>
+   <button id="createAccountButton" type="button">Create Account</button>
+   <button class="secondary" id="passwordSignInButton" type="button">Use Password Instead</button>
+   <button id="registerPasskeyButton" type="button" hidden>Create Passkey</button>
+   <button class="secondary" id="cancelLogin" type="button">Cancel</button>
+  </div>
+  <p id="accountState">No email sign-in links. Create an account with a password, then add a passkey for future sign-ins.</p>
  </div>
 </section>
 <p id="lastChecked"></p>
@@ -134,7 +143,7 @@ button svg,.action-link svg{width:17px;height:17px;flex:none}
 const SUPABASE_URL="https://upghyzhawctughyojwpo.supabase.co";
 const SUPABASE_KEY="sb_publishable_z70GOIzu3F_xdxdJiVa48A_SqvrA6-b";
 const $=id=>document.getElementById(id);
-const db=window.supabase.createClient(SUPABASE_URL,SUPABASE_KEY,{auth:{autoRefreshToken:true,persistSession:true,detectSessionInUrl:true,experimental:{passkey:true}}});
+const db=window.supabase.createClient(SUPABASE_URL,SUPABASE_KEY,{auth:{autoRefreshToken:true,persistSession:true,detectSessionInUrl:true}});
 let currentSession=null,refreshing=false,detected=false,activeKnownOutages=false;
 const CHECK_ICON='<path d="m10 28 11 11L45 13" stroke="#18d66b" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>';
 const BAD_ICON='<path d="M16 16 38 38M38 16 16 38" stroke="#ff6666" stroke-width="6" stroke-linecap="round"/>';
@@ -213,30 +222,40 @@ async function loadStatus(){
   button.textContent="Check Again";
  }
 }
+let authMode="default";
+function setAuthMode(mode){
+ authMode=mode;
+ const signup=mode==="signup",passwordLogin=mode==="password";
+ $("usernameField").hidden=!signup;
+ $("passwordField").hidden=!(signup||passwordLogin);
+ $("password").autocomplete=signup?"new-password":"current-password";
+ $("password").minLength=signup?8:1;
+ $("createAccountButton").hidden=passwordLogin;
+ $("passwordSignInButton").textContent=passwordLogin?"Back to Passkey Sign-in":"Use Password Instead";
+ $("passkeySignInButton").hidden=signup||passwordLogin;
+ $("authHelp").textContent=signup
+  ?"Choose a username and enter your email and password. Once your account is created, add a passkey for faster sign-in."
+  :passwordLogin
+   ?"Enter your email and password to sign in. Passkeys are the recommended sign-in method."
+   :"Sign in with a passkey, or create an account with a username, email, and password. You can add a passkey after creating your account.";
+}
 function updateAccountUI(){
  const signedIn=!!currentSession?.user;
  $("reportButton").textContent=signedIn?"Report an Outage":"Sign in to Report an Outage";
  $("loginPanel").classList.toggle("open",signedIn);
- $("accountState").textContent=signedIn?"Email verified. Create a passkey to sign in next time without a password.":"Use a passkey or request a secure email sign-in link. No password is needed.";
+ $("accountState").textContent=signedIn
+  ?"Signed in. Create a passkey now so you can sign in without typing a password next time."
+  :"Create an account with username, email, and password, or sign in with a passkey. No email sign-in links are used.";
  $("registerPasskeyButton").hidden=!signedIn;
- $("emailLinkButton").textContent=signedIn?"Email link sent":"Email me a sign-in link";
+ if(signedIn){setAuthMode("default");$("passkeySignInButton").hidden=true;$("createAccountButton").hidden=true;$("passwordSignInButton").hidden=true;}
+ else{setAuthMode(authMode);}
 }
-async function submitReport(){
- if(!currentSession?.user){$("loginPanel").classList.add("open");$("email").focus();message("Sign in with your registered Swiper account to submit a report.","bad");return;}
- const button=$("reportButton");button.disabled=true;button.textContent="Submitting…";message("");
- try{
-  const {data,error}=await db.rpc("swiper_submit_status_outage_report");
-  if(error)throw error;
-  const countResult=await db.rpc("swiper_status_outage_report_status");
-  if(countResult.error)throw countResult.error;
-  applyReportStatus(countResult.data);
-  if(data?.accepted)message("Your report has been counted. Thank you for helping monitor Swiper.","good");
-  else message("Your account has already reported during this 2-hour window. Your report is already counted.","good");
- }catch(error){message(error.message||"Could not submit your report. Please try again.","bad");}
- finally{button.disabled=false;button.textContent=currentSession?.user?"Report an Outage":"Sign in to Report an Outage";}
+function authErrorText(error){
+ const raw=error?.message||"Authentication failed. Please try again.";
+ if(/email not confirmed/i.test(raw))return "This account still requires email confirmation. To make registration completely link-free, email confirmation must be disabled in Supabase Auth settings.";
+ if(/user already registered/i.test(raw))return "That email already has an account. Sign in with its password or use its passkey.";
+ return raw;
 }
-let swiperTurnstileWidget=null,swiperTurnstileToken="",swiperTurnstileReady=null;function ensureSwiperTurnstile(){const host=$("swiperTurnstile");if(!host)throw Error("Security verification is unavailable. Reload the page and try again.");if(swiperTurnstileWidget!==null)return Promise.resolve();if(swiperTurnstileReady)return swiperTurnstileReady;swiperTurnstileReady=new Promise((resolve,reject)=>{const render=()=>{if(!window.turnstile){reject(Error("Security verification failed to load. Check your connection and try again."));return}try{swiperTurnstileWidget=window.turnstile.render(host,{sitekey:"0x4AAAAAAF9cX8702IwLD8nj",theme:"dark",callback:token=>{swiperTurnstileToken=token},"expired-callback":()=>{swiperTurnstileToken=""},"error-callback":()=>{swiperTurnstileToken=""}});resolve()}catch(e){reject(e)}};if(window.turnstile){render();return}let tag=document.querySelector('script[data-swiper-turnstile]');if(!tag){tag=document.createElement("script");tag.src="https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit";tag.async=true;tag.defer=true;tag.dataset.swiperTurnstile="1";document.head.appendChild(tag)}tag.addEventListener("load",render,{once:true});tag.addEventListener("error",()=>reject(Error("Could not load security verification.")),{once:true})});return swiperTurnstileReady}async function getSwiperCaptchaToken(){await ensureSwiperTurnstile();if(!swiperTurnstileToken)throw Error("Complete the security check below, then try again.");const token=swiperTurnstileToken;swiperTurnstileToken="";try{window.turnstile.reset(swiperTurnstileWidget)}catch{}return token}
-
 async function signInWithPasskey(){
  const button=$("passkeySignInButton");button.disabled=true;button.textContent="Waiting for passkey…";
  try{
@@ -244,24 +263,45 @@ async function signInWithPasskey(){
   const {data,error}=await db.auth.signInWithPasskey({options:{captchaToken}});
   if(error)throw error;
   currentSession=data.session;updateAccountUI();message("Signed in with your passkey. You can now report an outage.","good");
- }catch(error){$("accountState").textContent=error?.message||"Passkey sign-in failed. Check passkey setup and browser support.";}
+ }catch(error){$("accountState").textContent=authErrorText(error);}
  finally{button.disabled=false;button.textContent="Sign in with Passkey";}
 }
-async function sendEmailSignInLink(){
- const email=$("email").value.trim();
- if(!email){$("accountState").textContent="Enter your email address first.";return;}
- const button=$("emailLinkButton");button.disabled=true;button.textContent="Sending…";
+async function createAccount(){
+ const username=$("username").value.trim(),email=$("email").value.trim(),password=$("password").value;
+ if(!/^[a-zA-Z0-9_]{3,24}$/.test(username)){$("accountState").textContent="Username must be 3–24 characters and use only letters, numbers, or underscores.";return;}
+ if(!email){$("accountState").textContent="Enter your email address.";return;}
+ if(password.length<8){$("accountState").textContent="Choose a password with at least 8 characters.";return;}
+ const button=$("createAccountButton");button.disabled=true;button.textContent="Creating…";
  try{
   const captchaToken=await getSwiperCaptchaToken();
-  const {error}=await db.auth.signInWithOtp({email,options:{shouldCreateUser:true,captchaToken,emailRedirectTo:window.location.origin+window.location.pathname}});
+  const {data,error}=await db.auth.signUp({email,password,options:{data:{username},captchaToken}});
   if(error)throw error;
-  $("accountState").textContent="Check your inbox for the secure sign-in link. Open it on this device to finish signing in, then create your passkey.";
-  message("Secure sign-in link sent. No password was created or requested.","good");
- }catch(error){$("accountState").textContent=error?.message||"Could not send the sign-in link. Try again in a moment.";}
- finally{button.disabled=false;button.textContent="Email me a sign-in link";}
+  currentSession=data.session;
+  if(currentSession){
+   updateAccountUI();
+   $("accountState").textContent="Account created. Now create your passkey to make future sign-ins passwordless.";
+   message("Account created successfully. Add a passkey next.","good");
+  }else{
+   $("accountState").textContent="Account created, but Supabase is requiring email confirmation before sign-in or passkey setup. Disable Confirm email in Supabase Auth settings for fully link-free signup.";
+   message("Account created. Email confirmation is still enabled in the authentication settings.","bad");
+  }
+ }catch(error){$("accountState").textContent=authErrorText(error);}
+ finally{button.disabled=false;button.textContent="Create Account";}
+}
+async function signInWithPassword(){
+ const email=$("email").value.trim(),password=$("password").value;
+ if(!email||!password){$("accountState").textContent="Enter your email and password.";return;}
+ const button=$("passwordSignInButton");button.disabled=true;button.textContent="Signing in…";
+ try{
+  const captchaToken=await getSwiperCaptchaToken();
+  const {data,error}=await db.auth.signInWithPassword({email,password,options:{captchaToken}});
+  if(error)throw error;
+  currentSession=data.session;updateAccountUI();message("Signed in. You can now report an outage.","good");
+ }catch(error){$("accountState").textContent=authErrorText(error);}
+ finally{button.disabled=false;button.textContent="Use Password Instead";}
 }
 async function registerPasskey(){
- if(!currentSession?.user){$("accountState").textContent="Open the secure email sign-in link first, then create your passkey.";return;}
+ if(!currentSession?.user){$("accountState").textContent="Create an account and sign in first, then create your passkey.";return;}
  const button=$("registerPasskeyButton");button.disabled=true;button.textContent="Creating…";
  try{
   const {data,error}=await db.auth.registerPasskey();
@@ -269,14 +309,18 @@ async function registerPasskey(){
   button.textContent="Passkey Created ✓";
   $("accountState").textContent="Your passkey is ready. Next time, choose Sign in with Passkey—no password needed.";
   message("Passkey registered successfully.","good");
- }catch(error){$("accountState").textContent=error?.message||"Could not create a passkey. Make sure passkeys are enabled for this site and try again.";button.textContent="Create Passkey";}
+ }catch(error){$("accountState").textContent=authErrorText(error);button.textContent="Create Passkey";}
  finally{button.disabled=false;if(button.textContent==="Creating…")button.textContent="Create Passkey";}
 }
 $("refresh").addEventListener("click",loadStatus);
 $("reportButton").addEventListener("click",submitReport);
-$("emailLinkButton").addEventListener("click",sendEmailSignInLink);$("passkeySignInButton").addEventListener("click",signInWithPasskey);$("registerPasskeyButton").addEventListener("click",registerPasskey);
+$("passkeySignInButton").addEventListener("click",signInWithPasskey);
+$("createAccountButton").addEventListener("click",()=>{if(authMode!=="signup"){setAuthMode("signup");$("username").focus();return;}createAccount();});
+$("passwordSignInButton").addEventListener("click",()=>{if(authMode==="password"){setAuthMode("default");$("email").focus();return;}setAuthMode("password");$("password").focus();});
+$("registerPasskeyButton").addEventListener("click",registerPasskey);
 $("cancelLogin").addEventListener("click",()=>$("loginPanel").classList.remove("open"));
-$("email").addEventListener("keydown",e=>{if(e.key==="Enter")sendEmailSignInLink();});
+$("email").addEventListener("keydown",e=>{if(e.key==="Enter"){if(authMode==="signup")$("username").focus();else if(authMode==="password")$("password").focus();else signInWithPasskey();}});
+$("password").addEventListener("keydown",e=>{if(e.key==="Enter"){if(authMode==="signup")createAccount();else if(authMode==="password")signInWithPassword();}});
 db.auth.getSession().then(({data})=>{currentSession=data.session;updateAccountUI();}).catch(()=>updateAccountUI());
 db.auth.onAuthStateChange((_event,session)=>{currentSession=session;updateAccountUI();});
 loadStatus();
