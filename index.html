@@ -216,6 +216,12 @@ async function loadStatus(){
   button.textContent="Check Again";
  }
 }
+function updateAccountUI(){
+ const signedIn=!!currentSession?.user&&!currentSession.user.is_anonymous;
+ const reportButton=$("reportButton");
+ if(reportButton)reportButton.textContent=signedIn?"Report an Outage":"Sign in to Report an Outage";
+ if(signedIn){$("loginPanel").classList.remove("open");}
+}
 function authErrorText(error){
  const raw=error?.message||"Authentication failed. Please try again.";
  if(/email not confirmed/i.test(raw))return "This account still requires email confirmation. To make registration completely link-free, email confirmation must be disabled in Supabase Auth settings.";
