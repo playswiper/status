@@ -94,7 +94,7 @@ button svg,.action-link svg{width:17px;height:17px;flex:none}
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M10.3 3.9 2.6 17.2A2 2 0 0 0 4.3 20h15.4a2 2 0 0 0 1.7-2.8L13.7 3.9a2 2 0 0 0-3.4 0Z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>
   OUTAGE DETECTED
  </div>
- <p id="detectedText">11 or more unique Swiper accounts have reported an outage.</p>
+ <p id="detectedText">3 or more unique Swiper accounts have reported an outage.</p>
 </section>
 <section class="panel" aria-labelledby="outageHeading">
  <div class="section-head">
@@ -113,8 +113,8 @@ button svg,.action-link svg{width:17px;height:17px;flex:none}
   Report an Outage
  </h2>
  <p class="report-copy">If Swiper is not working, report it here. Each account can report once every 2-hour window. When 3 different accounts report, the page automatically marks an outage as detected.</p>
- <div class="report-count"><span id="countLabel">Community reports</span><strong id="countValue">0 / 11</strong></div>
- <div class="progress-track" role="progressbar" aria-label="Unique outage reports" aria-valuemin="0" aria-valuemax="11" aria-valuenow="0" id="progressTrack"><div class="progress-fill" id="progressFill"></div></div>
+ <div class="report-count"><span id="countLabel">Community reports</span><strong id="countValue">0 / 3</strong></div>
+ <div class="progress-track" role="progressbar" aria-label="Unique outage reports" aria-valuemin="0" aria-valuemax="3" aria-valuenow="0" id="progressTrack"><div class="progress-fill" id="progressFill"></div></div>
  <button id="reportButton" type="button">Report an Outage</button>
  <p id="reportMessage" aria-live="polite"></p>
  <div class="login-panel" id="loginPanel">
@@ -253,7 +253,7 @@ async function sendEmailSignInLink(){
  const button=$("emailLinkButton");button.disabled=true;button.textContent="Sending…";
  try{
   const captchaToken=await getSwiperCaptchaToken();
-  const {error}=await db.auth.signInWithOtp({email,options:{shouldCreateUser:true,captchaToken}});
+  const {error}=await db.auth.signInWithOtp({email,options:{shouldCreateUser:true,captchaToken,emailRedirectTo:window.location.origin+window.location.pathname}});
   if(error)throw error;
   $("accountState").textContent="Check your inbox for the secure sign-in link. Open it on this device to finish signing in, then create your passkey.";
   message("Secure sign-in link sent. No password was created or requested.","good");
