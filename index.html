@@ -216,7 +216,7 @@ async function loadStatus(){
 function updateAccountUI(){
  const signedIn=!!currentSession?.user;
  $("reportButton").textContent=signedIn?"Report an Outage":"Sign in to Report an Outage";
- $("loginPanel").classList.remove("open");
+ $("loginPanel").classList.toggle("open",signedIn);
  $("accountState").textContent=signedIn?"Email verified. Create a passkey to sign in next time without a password.":"Use a passkey or request a secure email sign-in link. No password is needed.";
  $("registerPasskeyButton").hidden=!signedIn;
  $("emailLinkButton").textContent=signedIn?"Email link sent":"Email me a sign-in link";
