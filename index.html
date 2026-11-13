@@ -126,11 +126,10 @@ button svg,.action-link svg{width:17px;height:17px;flex:none}
   <div class="login-actions">
    <button class="secondary" id="passkeySignInButton" type="button">Sign in with Passkey</button>
    <button id="createAccountButton" type="button">Create Account</button>
-   <button class="secondary" id="passwordSignInButton" type="button">Use Password Instead</button>
    <button id="registerPasskeyButton" type="button" hidden>Create Passkey</button>
    <button class="secondary" id="cancelLogin" type="button">Cancel</button>
   </div>
-  <p id="accountState">No email sign-in links. Create an account with a password, then add a passkey for future sign-ins.</p>
+  <p id="accountState">Passkey-only sign-in. New accounts must register a passkey after signup.</p>
  </div>
 </section>
 <p id="lastChecked"></p>
@@ -224,36 +223,23 @@ async function loadStatus(){
 }
 let authMode="default";
 function setAuthMode(mode){
- authMode=mode;
- const signup=mode==="signup",passwordLogin=mode==="password";
+ authMode=mode==="signup"?"signup":"default";
+ const signup=authMode==="signup";
  $("usernameField").hidden=!signup;
- $("passwordField").hidden=!(signup||passwordLogin);
- $("password").autocomplete=signup?"new-password":"current-password";
- $("password").minLength=signup?8:1;
- $("createAccountButton").hidden=passwordLogin;
- $("passwordSignInButton").textContent=passwordLogin?"Back to Passkey Sign-in":"Use Password Instead";
- $("passkeySignInButton").hidden=signup||passwordLogin;
+ $("passwordField").hidden=!signup;
+ $("password").autocomplete="new-password";
+ $("password").minLength=8;
+ $("createAccountButton").textContent=signup?"Create Account":"Create Account";
+ $("passkeySignInButton").hidden=signup;
  $("authHelp").textContent=signup
-  ?"Choose a username and enter your email and password. Once your account is created, add a passkey for faster sign-in."
-  :passwordLogin
-   ?"Enter your email and password to sign in. Passkeys are the recommended sign-in method."
-   :"Sign in with a passkey, or create an account with a username, email, and password. You can add a passkey after creating your account.";
+  ?"Choose a username, email, and password to create your account. After signup, register a passkey. All future sign-ins use your passkey."
+  :"Sign in with your passkey. New here? Create an account first, then register a passkey.";
 }
-function updateAccountUI(){
- const signedIn=!!currentSession?.user;
- $("reportButton").textContent=signedIn?"Report an Outage":"Sign in to Report an Outage";
- $("loginPanel").classList.toggle("open",signedIn);
- $("accountState").textContent=signedIn
-  ?"Signed in. Create a passkey now so you can sign in without typing a password next time."
-  :"Create an account with username, email, and password, or sign in with a passkey. No email sign-in links are used.";
- $("registerPasskeyButton").hidden=!signedIn;
- if(signedIn){setAuthMode("default");$("passkeySignInButton").hidden=true;$("createAccountButton").hidden=true;$("passwordSignInButton").hidden=true;}
- else{setAuthMode(authMode);}
-}
+
 function authErrorText(error){
  const raw=error?.message||"Authentication failed. Please try again.";
  if(/email not confirmed/i.test(raw))return "This account still requires email confirmation. To make registration completely link-free, email confirmation must be disabled in Supabase Auth settings.";
- if(/user already registered/i.test(raw))return "That email already has an account. Sign in with its password or use its passkey.";
+ if(/user already registered/i.test(raw))return "That email already has an account. Sign in using a passkey registered to that account.";
  return raw;
 }
 async function signInWithPasskey(){
@@ -286,17 +272,7 @@ async function createAccount(){
  }catch(error){$("accountState").textContent=authErrorText(error);}
  finally{button.disabled=false;button.textContent="Create Account";}
 }
-async function signInWithPassword(){
- const email=$("email").value.trim(),password=$("password").value;
- if(!email||!password){$("accountState").textContent="Enter your email and password.";return;}
- const button=$("passwordSignInButton");button.disabled=true;button.textContent="Signing in…";
- try{
-  const {data,error}=await db.auth.signInWithPassword({email,password});
-  if(error)throw error;
-  currentSession=data.session;updateAccountUI();message("Signed in. You can now report an outage.","good");
- }catch(error){$("accountState").textContent=authErrorText(error);}
- finally{button.disabled=false;button.textContent="Use Password Instead";}
-}
+
 async function registerPasskey(){
  if(!currentSession?.user){$("accountState").textContent="Create an account and sign in first, then create your passkey.";return;}
  const button=$("registerPasskeyButton");button.disabled=true;button.textContent="Creating…";
@@ -313,9 +289,9 @@ async function submitReport(){
  if(!currentSession?.user){
   setAuthMode("default");
   $("loginPanel").classList.add("open");
-  $("accountState").textContent="Sign in with a passkey or create an account before reporting an outage.";
+  $("accountState").textContent="Sign in with your passkey or create an account and register one before reporting an outage.";
   message("Sign in to your Swiper account to submit a report.","bad");
-  $("email").focus();
+  $("passkeySignInButton").focus();
   return;
  }
  if(currentSession.user.is_anonymous){
@@ -349,11 +325,10 @@ $("refresh").addEventListener("click",loadStatus);
 $("reportButton").addEventListener("click",submitReport);
 $("passkeySignInButton").addEventListener("click",signInWithPasskey);
 $("createAccountButton").addEventListener("click",()=>{if(authMode!=="signup"){setAuthMode("signup");$("username").focus();return;}createAccount();});
-$("passwordSignInButton").addEventListener("click",()=>{if(authMode==="password"){setAuthMode("default");$("email").focus();return;}setAuthMode("password");$("password").focus();});
 $("registerPasskeyButton").addEventListener("click",registerPasskey);
 $("cancelLogin").addEventListener("click",()=>$("loginPanel").classList.remove("open"));
-$("email").addEventListener("keydown",e=>{if(e.key==="Enter"){if(authMode==="signup")$("username").focus();else if(authMode==="password")$("password").focus();else signInWithPasskey();}});
-$("password").addEventListener("keydown",e=>{if(e.key==="Enter"){if(authMode==="signup")createAccount();else if(authMode==="password")signInWithPassword();}});
+$("email").addEventListener("keydown",e=>{if(e.key==="Enter"){if(authMode==="signup")$("username").focus();else signInWithPasskey();}});
+$("password").addEventListener("keydown",e=>{if(e.key==="Enter"&&authMode==="signup")createAccount();});
 db.auth.getSession().then(({data})=>{currentSession=data.session;updateAccountUI();}).catch(()=>updateAccountUI());
 db.auth.onAuthStateChange((_event,session)=>{currentSession=session;updateAccountUI();});
 loadStatus();
