@@ -230,43 +230,8 @@ async function signInWithPasskey(){
  }catch(error){$("accountState").textContent=authErrorText(error);}
  finally{button.disabled=false;button.textContent="Sign in with Passkey";}
 }
-async function createAccount(){
- const username=$("username").value.trim(),email=$("email").value.trim(),password=$("password").value;
- if(!/^[a-zA-Z0-9_]{3,24}$/.test(username)){$("accountState").textContent="Username must be 3–24 characters and use only letters, numbers, or underscores.";return;}
- if(!email){$("accountState").textContent="Enter your email address.";return;}
- if(password.length<8){$("accountState").textContent="Choose a password with at least 8 characters.";return;}
- const button=$("createAccountButton");button.disabled=true;button.textContent="Creating…";
- try{
-  const {data,error}=await db.auth.signUp({email,password,options:{data:{username}}});
-  if(error)throw error;
-  currentSession=data.session;
-  if(currentSession){
-   updateAccountUI();
-   $("accountState").textContent="Account created. Now create your passkey to make future sign-ins passwordless.";
-   message("Account created successfully. Add a passkey next.","good");
-  }else{
-   $("accountState").textContent="Account created, but Supabase is requiring email confirmation before sign-in or passkey setup. Disable Confirm email in Supabase Auth settings for fully link-free signup.";
-   message("Account created. Email confirmation is still enabled in the authentication settings.","bad");
-  }
- }catch(error){$("accountState").textContent=authErrorText(error);}
- finally{button.disabled=false;button.textContent="Create Account";}
-}
-
-async function registerPasskey(){
- if(!currentSession?.user){$("accountState").textContent="Create an account and sign in first, then create your passkey.";return;}
- const button=$("registerPasskeyButton");button.disabled=true;button.textContent="Creating…";
- try{
-  const {data,error}=await db.auth.registerPasskey();
-  if(error)throw error;
-  button.textContent="Passkey Created ✓";
-  $("accountState").textContent="Your passkey is ready. Next time, choose Sign in with Passkey—no password needed.";
-  message("Passkey registered successfully.","good");
- }catch(error){$("accountState").textContent=authErrorText(error);button.textContent="Create Passkey";}
- finally{button.disabled=false;if(button.textContent==="Creating…")button.textContent="Create Passkey";}
-}
 async function submitReport(){
  if(!currentSession?.user){
-  setAuthMode("default");
   $("loginPanel").classList.add("open");
   $("accountState").textContent="Sign in with your existing Swiper account using your passkey.";
   message("Sign in to your Swiper account to submit a report.","bad");
@@ -303,11 +268,7 @@ async function submitReport(){
 $("refresh").addEventListener("click",loadStatus);
 $("reportButton").addEventListener("click",submitReport);
 $("passkeySignInButton").addEventListener("click",signInWithPasskey);
-$("createAccountButton").addEventListener("click",()=>{if(authMode!=="signup"){setAuthMode("signup");$("username").focus();return;}createAccount();});
-$("registerPasskeyButton").addEventListener("click",registerPasskey);
 $("cancelLogin").addEventListener("click",()=>$("loginPanel").classList.remove("open"));
-$("email").addEventListener("keydown",e=>{if(e.key==="Enter"){if(authMode==="signup")$("username").focus();else signInWithPasskey();}});
-$("password").addEventListener("keydown",e=>{if(e.key==="Enter"&&authMode==="signup")createAccount();});
 db.auth.getSession().then(({data})=>{currentSession=data.session;updateAccountUI();}).catch(()=>updateAccountUI());
 db.auth.onAuthStateChange((_event,session)=>{currentSession=session;updateAccountUI();});
 loadStatus();
