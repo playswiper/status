@@ -143,7 +143,7 @@ button svg,.action-link svg{width:17px;height:17px;flex:none}
 const SUPABASE_URL="https://upghyzhawctughyojwpo.supabase.co";
 const SUPABASE_KEY="sb_publishable_z70GOIzu3F_xdxdJiVa48A_SqvrA6-b";
 const $=id=>document.getElementById(id);
-const db=window.supabase.createClient(SUPABASE_URL,SUPABASE_KEY,{auth:{autoRefreshToken:true,persistSession:true,detectSessionInUrl:true}});
+const db=window.supabase.createClient(SUPABASE_URL,SUPABASE_KEY,{auth:{autoRefreshToken:true,persistSession:true,detectSessionInUrl:true,experimental:{passkey:true}}});
 let currentSession=null,refreshing=false,detected=false,activeKnownOutages=false;
 const CHECK_ICON='<path d="m10 28 11 11L45 13" stroke="#18d66b" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>';
 const BAD_ICON='<path d="M16 16 38 38M38 16 16 38" stroke="#ff6666" stroke-width="6" stroke-linecap="round"/>';
@@ -259,8 +259,7 @@ function authErrorText(error){
 async function signInWithPasskey(){
  const button=$("passkeySignInButton");button.disabled=true;button.textContent="Waiting for passkey…";
  try{
-  const captchaToken=await getSwiperCaptchaToken();
-  const {data,error}=await db.auth.signInWithPasskey({options:{captchaToken}});
+  const {data,error}=await db.auth.signInWithPasskey();
   if(error)throw error;
   currentSession=data.session;updateAccountUI();message("Signed in with your passkey. You can now report an outage.","good");
  }catch(error){$("accountState").textContent=authErrorText(error);}
@@ -273,8 +272,7 @@ async function createAccount(){
  if(password.length<8){$("accountState").textContent="Choose a password with at least 8 characters.";return;}
  const button=$("createAccountButton");button.disabled=true;button.textContent="Creating…";
  try{
-  const captchaToken=await getSwiperCaptchaToken();
-  const {data,error}=await db.auth.signUp({email,password,options:{data:{username},captchaToken}});
+  const {data,error}=await db.auth.signUp({email,password,options:{data:{username}}});
   if(error)throw error;
   currentSession=data.session;
   if(currentSession){
@@ -293,8 +291,7 @@ async function signInWithPassword(){
  if(!email||!password){$("accountState").textContent="Enter your email and password.";return;}
  const button=$("passwordSignInButton");button.disabled=true;button.textContent="Signing in…";
  try{
-  const captchaToken=await getSwiperCaptchaToken();
-  const {data,error}=await db.auth.signInWithPassword({email,password,options:{captchaToken}});
+  const {data,error}=await db.auth.signInWithPassword({email,password});
   if(error)throw error;
   currentSession=data.session;updateAccountUI();message("Signed in. You can now report an outage.","good");
  }catch(error){$("accountState").textContent=authErrorText(error);}
@@ -311,6 +308,42 @@ async function registerPasskey(){
   message("Passkey registered successfully.","good");
  }catch(error){$("accountState").textContent=authErrorText(error);button.textContent="Create Passkey";}
  finally{button.disabled=false;if(button.textContent==="Creating…")button.textContent="Create Passkey";}
+}
+async function submitReport(){
+ if(!currentSession?.user){
+  setAuthMode("default");
+  $("loginPanel").classList.add("open");
+  $("accountState").textContent="Sign in with a passkey or create an account before reporting an outage.";
+  message("Sign in to your Swiper account to submit a report.","bad");
+  $("email").focus();
+  return;
+ }
+ if(currentSession.user.is_anonymous){
+  message("Guest accounts cannot submit outage reports. Sign in with a registered account.","bad");
+  return;
+ }
+ const button=$("reportButton");
+ button.disabled=true;button.textContent="Submitting…";
+ message("Submitting your report…");
+ try{
+  const {data,error}=await db.rpc("swiper_submit_status_outage_report");
+  if(error)throw error;
+  applyReportStatus(data,activeKnownOutages);
+  if(data?.accepted){
+   message("Your outage report was recorded. Thank you for helping the Swiper community.","good");
+  }else if(data?.already_reported){
+   message("You already reported during this 2-hour window. Your existing report is still counted.","bad");
+  }else{
+   message("The report request completed, but its status was not confirmed. Refresh and check again.","bad");
+  }
+  await loadStatus();
+ }catch(error){
+  const text=error?.message||"The report could not be submitted. Please try again.";
+  message(text,"bad");
+ }finally{
+  button.disabled=false;
+  button.textContent=currentSession?.user&&!currentSession.user.is_anonymous?"Report an Outage":"Sign in to Report an Outage";
+ }
 }
 $("refresh").addEventListener("click",loadStatus);
 $("reportButton").addEventListener("click",submitReport);
