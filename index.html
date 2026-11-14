@@ -44,12 +44,6 @@ button svg,.action-link svg{width:17px;height:17px;flex:none}
 .outage-card.warning{border-color:#80611d;background:#191305}.outage-card.warning .outage-icon{background:#46330d;color:#ffd36b}.outage-card.warning .outage-card-title{color:#ffdc88}
 .outage-updates{display:grid;gap:7px;margin-top:10px;padding-top:9px;border-top:1px solid #ffffff18}
 .outage-update{font-size:12px;line-height:1.4;color:#ddd}.outage-update time{display:block;color:#888;font-size:10px;margin-top:3px}
-.admin-outage-tools{display:grid;gap:7px;margin-top:11px;padding-top:10px;border-top:1px solid #ffffff20}
-.admin-outage-tools textarea,.admin-create textarea,.admin-create input,.admin-create select,.admin-outage-tools input{width:100%;min-height:40px;border:1px solid #383838;border-radius:9px;background:#101010;color:#fff;padding:9px 11px;font:13px Fredoka,sans-serif}
-.admin-outage-tools textarea,.admin-create textarea{min-height:64px;resize:vertical}
-.admin-outage-actions{display:flex;gap:8px;flex-wrap:wrap}.admin-outage-actions button{min-height:36px;font-size:12px}
-.admin-create{width:100%;border:1px solid #3b3423;background:#100e08;border-radius:14px;padding:15px;margin:0 0 16px;display:none;gap:10px}
-.admin-create.show{display:grid}.admin-create h2{font-size:16px;margin:0}.admin-create label{font-size:12px;color:#aaa;display:grid;gap:5px}
 .empty,.error{border:1px solid #292929;background:#080808;border-radius:11px;padding:14px;color:#aaa;font-size:13px;line-height:1.45;display:flex;align-items:center;gap:10px}
 .empty svg{width:21px;height:21px;color:var(--green);flex:none}
 .error{border-color:#553030;color:#ffaaaa}
@@ -114,15 +108,6 @@ button svg,.action-link svg{width:17px;height:17px;flex:none}
  </div>
  <div class="outage-list" id="outageList" aria-live="polite"><div class="empty">Loading active outage notices…</div></div>
 </section>
-<section class="admin-create" id="adminCreatePanel" aria-label="Manage status notices">
- <h2>Publish a Status Notice</h2>
- <label>Notice type<select id="adminSeverity"><option value="warning">Warning</option><option value="error">Error</option></select></label>
- <label>Title<input id="adminTitle" maxlength="120" placeholder="Short issue title"></label>
- <label>Details<textarea id="adminDetails" maxlength="1200" placeholder="What is affected and what users should know…"></textarea></label>
- <label>First update (optional)<textarea id="adminFirstUpdate" maxlength="600" placeholder="Investigating…"></textarea></label>
- <button id="adminPublish" type="button">Publish Notice</button>
- <p id="adminMessage" aria-live="polite"></p>
-</section>
 <section class="panel" aria-labelledby="resolvedHeading">
  <div class="section-head"><h2 id="resolvedHeading">Resolved Issues</h2><span class="section-count" id="resolvedCount">0 resolved</span></div>
  <div class="outage-list" id="resolvedList" aria-live="polite"><div class="empty">Resolved issues will appear here when a notice is marked resolved.</div></div>
@@ -175,27 +160,6 @@ function renderUpdateHistory(parent,updates){
  for(const item of updates){if(!item||!item.message)continue;const line=document.createElement("div");line.className="outage-update";line.textContent=item.message;const time=document.createElement("time");const date=new Date(item.created_at||"");time.textContent=Number.isNaN(date.getTime())?"Update time unavailable":date.toLocaleString();line.append(time);wrap.append(line);}
  if(wrap.childNodes.length)parent.append(wrap);
 }
-async function appendOutageUpdate(row,input,button){
- const update=input.value.trim();if(!update)return;
- button.disabled=true;button.textContent="Saving…";
- try{const updates=[...(Array.isArray(row.updates)?row.updates:[]),{message:update,created_at:new Date().toISOString()}];const {error}=await db.from("swiper_known_outages").update({updates}).eq("id",row.id);if(error)throw error;input.value="";await loadStatus();}
- catch(error){$("adminMessage").textContent="Could not save update: "+(error.message||"Try again.");}
- finally{button.disabled=false;button.textContent="Add Update";}
-}
-async function resolveOutage(row,button){
- button.disabled=true;button.textContent="Resolving…";
- try{const {error}=await db.from("swiper_known_outages").update({resolved_at:new Date().toISOString()}).eq("id",row.id);if(error)throw error;await loadStatus();}
- catch(error){$("adminMessage").textContent="Could not resolve notice: "+(error.message||"Try again.");button.disabled=false;button.textContent="Mark Resolved";}
-}
-async function publishOutage(){
- if(!isStatusAdmin())return;
- const button=$("adminPublish"),title=$("adminTitle").value.trim(),details=$("adminDetails").value.trim(),severity=$("adminSeverity").value,firstUpdate=$("adminFirstUpdate").value.trim();
- if(title.length<3){$("adminMessage").textContent="Enter a title with at least 3 characters.";return;}
- button.disabled=true;button.textContent="Publishing…";
- try{const payload={title,details,severity,created_by:"Swiper Status admin"};if(firstUpdate)payload.updates=[{message:firstUpdate,created_at:new Date().toISOString()}];const {error}=await db.from("swiper_known_outages").insert(payload);if(error)throw error;$("adminTitle").value="";$("adminDetails").value="";$("adminFirstUpdate").value="";$("adminMessage").textContent="Notice published.";await loadStatus();}
- catch(error){$("adminMessage").textContent="Could not publish notice: "+(error.message||"Try again.");}
- finally{button.disabled=false;button.textContent="Publish Notice";}
-}
 function renderOutages(rows){
  const list=$("outageList"),resolvedList=$("resolvedList");list.replaceChildren();resolvedList.replaceChildren();
  const activeRows=rows.filter(row=>!row.resolved_at),resolvedRows=rows.filter(row=>!!row.resolved_at);activeKnownSeverity=activeRows.some(row=>row.severity==="error")?"error":activeRows.some(row=>row.severity==="warning")?"warning":"none";
@@ -222,7 +186,6 @@ function renderOutages(rows){
   if(row.details){const details=document.createElement("div");details.className="outage-card-details";details.textContent=row.details;body.append(details);}
   if(row.started_at){const time=document.createElement("div");time.className="outage-card-time";const date=new Date(row.started_at);time.textContent="Started: "+(Number.isNaN(date.getTime())?"Time unavailable":date.toLocaleString());body.append(time);}
   renderUpdateHistory(body,row.updates);
-  if(isStatusAdmin()){const tools=document.createElement("div");tools.className="admin-outage-tools";const input=document.createElement("textarea");input.maxLength=600;input.placeholder="Add an update (e.g. Fixing… / Monitoring…)";const actions=document.createElement("div");actions.className="admin-outage-actions";const add=document.createElement("button");add.type="button";add.className="secondary";add.textContent="Add Update";add.addEventListener("click",()=>appendOutageUpdate(row,input,add));const resolve=document.createElement("button");resolve.type="button";resolve.className="secondary";resolve.textContent="Mark Resolved";resolve.addEventListener("click",()=>resolveOutage(row,resolve));actions.append(add,resolve);tools.append(input,actions);body.append(tools);}
   card.append(icon,body);list.append(card);
  }
  return true;
@@ -266,11 +229,8 @@ async function loadStatus(){
   if(statusRefreshQueued){statusRefreshQueued=false;loadStatus();}
  }
 }
-function isStatusAdmin(){return !!currentSession?.user&&!currentSession.user.is_anonymous&&String(currentSession.user.email||"").toLowerCase()==="mystarsnight@gmail.com";}
 function updateAccountUI(){
  const signedIn=!!currentSession?.user&&!currentSession.user.is_anonymous;
- $("adminCreatePanel").classList.toggle("show",isStatusAdmin());
- if(isStatusAdmin())loadStatus();
  const reportButton=$("reportButton");
  if(reportButton)reportButton.textContent=signedIn?"Report an Outage":"Sign in to Report an Outage";
  if(signedIn){$("loginPanel").classList.remove("open");}
@@ -344,7 +304,6 @@ async function submitReport(){
  }
 }
 $("refresh").addEventListener("click",loadStatus);
-$("adminPublish").addEventListener("click",publishOutage);
 $("reportButton").addEventListener("click",submitReport);
 $("passkeySignInButton").addEventListener("click",signInWithPasskey);
 $("cancelLogin").addEventListener("click",()=>$("loginPanel").classList.remove("open"));
