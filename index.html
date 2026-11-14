@@ -158,7 +158,7 @@ const SUPABASE_URL="https://upghyzhawctughyojwpo.supabase.co";
 const SUPABASE_KEY="sb_publishable_z70GOIzu3F_xdxdJiVa48A_SqvrA6-b";
 const $=id=>document.getElementById(id);
 const db=window.supabase.createClient(SUPABASE_URL,SUPABASE_KEY,{auth:{autoRefreshToken:true,persistSession:true,detectSessionInUrl:true,experimental:{passkey:true}}});
-let currentSession=null,refreshing=false,detected=false,activeKnownOutages=false,activeKnownSeverity="none",statusTurnstileWidget=null,statusTurnstileToken="",statusTurnstileReady=null,statusCaptchaWaiters=[];
+let currentSession=null,refreshing=false,statusRefreshQueued=false,detected=false,activeKnownOutages=false,activeKnownSeverity="none",statusTurnstileWidget=null,statusTurnstileToken="",statusTurnstileReady=null,statusCaptchaWaiters=[];
 const CHECK_ICON='<path d="m10 28 11 11L45 13" stroke="#18d66b" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>';
 const BAD_ICON='<path d="M16 16 38 38M38 16 16 38" stroke="#ff6666" stroke-width="6" stroke-linecap="round"/>';
 function setHero(kind,title,detail){
@@ -237,13 +237,13 @@ function applyReportStatus(data,hasKnownOutages=activeKnownOutages){
  $("detectedPanel").classList.toggle("show",hit);
  if(hit){
   $("detectedText").textContent=hasKnownOutages?"An active known service notice is listed below.":count+" unique Swiper accounts reported an outage in this 2-hour reporting window.";
-  const isError=activeKnownSeverity==="error"||(!hasKnownOutages&&communityHit);setHero(isError?"bad":activeKnownSeverity==="warning"?"warning":"bad",isError?"ERROR DETECTED":activeKnownSeverity==="warning"?"WARNING":"OUTAGE DETECTED",hasKnownOutages?(activeKnownSeverity==="warning"?"A warning is active. Service may be affected.":"An active error notice is listed below."):"The community report threshold has been reached.");
+  const isError=activeKnownSeverity==="error"||communityHit;setHero(isError?"bad":activeKnownSeverity==="warning"?"warning":"bad",isError?"ERROR DETECTED":activeKnownSeverity==="warning"?"WARNING":"OUTAGE DETECTED",hasKnownOutages?(activeKnownSeverity==="warning"?"A warning is active. Service may be affected.":"An active error notice is listed below."):"The community report threshold has been reached.");
  }else{
   setHero("ok","No known issues","All monitored services are currently clear, with no active known outages.");
  }
 }
 async function loadStatus(){
- if(refreshing)return;refreshing=true;
+ if(refreshing){statusRefreshQueued=true;return;}refreshing=true;
  const button=$("refresh");button.disabled=true;button.textContent="Loading…";
  try{
   const [outageResult,statusResult]=await Promise.all([
@@ -263,12 +263,14 @@ async function loadStatus(){
  }finally{
   refreshing=false;button.disabled=false;
   button.textContent="Check Again";
+  if(statusRefreshQueued){statusRefreshQueued=false;loadStatus();}
  }
 }
 function isStatusAdmin(){return !!currentSession?.user&&!currentSession.user.is_anonymous&&String(currentSession.user.email||"").toLowerCase()==="mystarsnight@gmail.com";}
 function updateAccountUI(){
  const signedIn=!!currentSession?.user&&!currentSession.user.is_anonymous;
  $("adminCreatePanel").classList.toggle("show",isStatusAdmin());
+ if(isStatusAdmin())loadStatus();
  const reportButton=$("reportButton");
  if(reportButton)reportButton.textContent=signedIn?"Report an Outage":"Sign in to Report an Outage";
  if(signedIn){$("loginPanel").classList.remove("open");}
