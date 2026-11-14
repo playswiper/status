@@ -204,7 +204,7 @@ function renderOutages(rows){
  for(const row of resolvedRows){
   const card=document.createElement("article");card.className="resolved-card";
   const icon=document.createElement("div");icon.className="resolved-icon";icon.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 4 4L19 6"/></svg>';
-  const body=document.createElement("div"),title=document.createElement("div");title.className="resolved-title";title.textContent="(Resolved) "+(row.title||"Service issue");body.append(title);
+  const body=document.createElement("div"),title=document.createElement("div");title.className="resolved-title";title.textContent=(/^\\(Resolved\\)\\s*/i.test(row.title||"")?"":"(Resolved) ")+(row.title||"Service issue");body.append(title);
   if(row.details){const details=document.createElement("div");details.className="resolved-details";details.textContent=row.details;body.append(details);}renderUpdateHistory(body,row.updates);
   const time=document.createElement("div");time.className="resolved-time";const resolvedDate=new Date(row.resolved_at);time.textContent="Resolved: "+(Number.isNaN(resolvedDate.getTime())?"Time unavailable":resolvedDate.toLocaleString());if(row.started_at){const started=new Date(row.started_at);if(!Number.isNaN(started.getTime()))time.textContent+=" · Started: "+started.toLocaleString();}body.append(time);card.append(icon,body);resolvedList.append(card);
  }
