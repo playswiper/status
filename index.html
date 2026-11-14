@@ -39,6 +39,17 @@ button svg,.action-link svg{width:17px;height:17px;flex:none}
 .outage-card-title{font-size:16px;font-weight:700;color:#ff8585;line-height:1.25}
 .outage-card-details{font-size:13px;line-height:1.45;color:#ddd;margin-top:5px;white-space:pre-wrap;overflow-wrap:anywhere}
 .outage-card-time{font-size:11px;color:#a99;margin-top:8px}
+.severity-tag{display:inline-flex;align-items:center;border-radius:999px;padding:3px 8px;font-size:10px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;margin:0 0 7px}
+.severity-error{background:#401717;color:#ff9999}.severity-warning{background:#3a2c0d;color:#ffd36b}
+.outage-card.warning{border-color:#80611d;background:#191305}.outage-card.warning .outage-icon{background:#46330d;color:#ffd36b}.outage-card.warning .outage-card-title{color:#ffdc88}
+.outage-updates{display:grid;gap:7px;margin-top:10px;padding-top:9px;border-top:1px solid #ffffff18}
+.outage-update{font-size:12px;line-height:1.4;color:#ddd}.outage-update time{display:block;color:#888;font-size:10px;margin-top:3px}
+.admin-outage-tools{display:grid;gap:7px;margin-top:11px;padding-top:10px;border-top:1px solid #ffffff20}
+.admin-outage-tools textarea,.admin-create textarea,.admin-create input,.admin-create select,.admin-outage-tools input{width:100%;min-height:40px;border:1px solid #383838;border-radius:9px;background:#101010;color:#fff;padding:9px 11px;font:13px Fredoka,sans-serif}
+.admin-outage-tools textarea,.admin-create textarea{min-height:64px;resize:vertical}
+.admin-outage-actions{display:flex;gap:8px;flex-wrap:wrap}.admin-outage-actions button{min-height:36px;font-size:12px}
+.admin-create{width:100%;border:1px solid #3b3423;background:#100e08;border-radius:14px;padding:15px;margin:0 0 16px;display:none;gap:10px}
+.admin-create.show{display:grid}.admin-create h2{font-size:16px;margin:0}.admin-create label{font-size:12px;color:#aaa;display:grid;gap:5px}
 .empty,.error{border:1px solid #292929;background:#080808;border-radius:11px;padding:14px;color:#aaa;font-size:13px;line-height:1.45;display:flex;align-items:center;gap:10px}
 .empty svg{width:21px;height:21px;color:var(--green);flex:none}
 .error{border-color:#553030;color:#ffaaaa}
@@ -103,6 +114,15 @@ button svg,.action-link svg{width:17px;height:17px;flex:none}
  </div>
  <div class="outage-list" id="outageList" aria-live="polite"><div class="empty">Loading active outage notices…</div></div>
 </section>
+<section class="admin-create" id="adminCreatePanel" aria-label="Manage status notices">
+ <h2>Publish a Status Notice</h2>
+ <label>Notice type<select id="adminSeverity"><option value="warning">Warning</option><option value="error">Error</option></select></label>
+ <label>Title<input id="adminTitle" maxlength="120" placeholder="Short issue title"></label>
+ <label>Details<textarea id="adminDetails" maxlength="1200" placeholder="What is affected and what users should know…"></textarea></label>
+ <label>First update (optional)<textarea id="adminFirstUpdate" maxlength="600" placeholder="Investigating…"></textarea></label>
+ <button id="adminPublish" type="button">Publish Notice</button>
+ <p id="adminMessage" aria-live="polite"></p>
+</section>
 <section class="panel" aria-labelledby="resolvedHeading">
  <div class="section-head"><h2 id="resolvedHeading">Resolved Issues</h2><span class="section-count" id="resolvedCount">0 resolved</span></div>
  <div class="outage-list" id="resolvedList" aria-live="polite"><div class="empty">Resolved issues will appear here when a notice is marked resolved.</div></div>
@@ -138,27 +158,54 @@ const SUPABASE_URL="https://upghyzhawctughyojwpo.supabase.co";
 const SUPABASE_KEY="sb_publishable_z70GOIzu3F_xdxdJiVa48A_SqvrA6-b";
 const $=id=>document.getElementById(id);
 const db=window.supabase.createClient(SUPABASE_URL,SUPABASE_KEY,{auth:{autoRefreshToken:true,persistSession:true,detectSessionInUrl:true,experimental:{passkey:true}}});
-let currentSession=null,refreshing=false,detected=false,activeKnownOutages=false,statusTurnstileWidget=null,statusTurnstileToken="",statusTurnstileReady=null,statusCaptchaWaiters=[];
+let currentSession=null,refreshing=false,detected=false,activeKnownOutages=false,activeKnownSeverity="none",statusTurnstileWidget=null,statusTurnstileToken="",statusTurnstileReady=null,statusCaptchaWaiters=[];
 const CHECK_ICON='<path d="m10 28 11 11L45 13" stroke="#18d66b" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>';
 const BAD_ICON='<path d="M16 16 38 38M38 16 16 38" stroke="#ff6666" stroke-width="6" stroke-linecap="round"/>';
 function setHero(kind,title,detail){
- $("mark").style.borderColor=kind==="bad"?"#ff5555":kind==="loading"?"#777":"#18d66b";
- $("markIcon").innerHTML=kind==="bad"?BAD_ICON:kind==="loading"?'<circle cx="27" cy="27" r="16" stroke="#aaa" stroke-width="5"/>':CHECK_ICON;
+ $("mark").style.borderColor=kind==="bad"?"#ff5555":kind==="warning"?"#e6b84e":kind==="loading"?"#777":"#18d66b";
+ $("markIcon").innerHTML=kind==="bad"?BAD_ICON:kind==="warning"?'<path d="M27 8 48 45H6L27 8Z" stroke="#e6b84e" stroke-width="4" stroke-linejoin="round"/><path d="M27 20v12m0 6h.01" stroke="#e6b84e" stroke-width="3" stroke-linecap="round"/>':kind==="loading"?'<circle cx="27" cy="27" r="16" stroke="#aaa" stroke-width="5"/>':CHECK_ICON;
  $("headline").textContent=title;$("detail").textContent=detail;
 }
 function message(text,kind=""){
  $("reportMessage").textContent=text;$("reportMessage").className=kind;
 }
+function renderUpdateHistory(parent,updates){
+ if(!Array.isArray(updates)||!updates.length)return;
+ const wrap=document.createElement("div");wrap.className="outage-updates";
+ for(const item of updates){if(!item||!item.message)continue;const line=document.createElement("div");line.className="outage-update";line.textContent=item.message;const time=document.createElement("time");const date=new Date(item.created_at||"");time.textContent=Number.isNaN(date.getTime())?"Update time unavailable":date.toLocaleString();line.append(time);wrap.append(line);}
+ if(wrap.childNodes.length)parent.append(wrap);
+}
+async function appendOutageUpdate(row,input,button){
+ const update=input.value.trim();if(!update)return;
+ button.disabled=true;button.textContent="Saving…";
+ try{const updates=[...(Array.isArray(row.updates)?row.updates:[]),{message:update,created_at:new Date().toISOString()}];const {error}=await db.from("swiper_known_outages").update({updates}).eq("id",row.id);if(error)throw error;input.value="";await loadStatus();}
+ catch(error){$("adminMessage").textContent="Could not save update: "+(error.message||"Try again.");}
+ finally{button.disabled=false;button.textContent="Add Update";}
+}
+async function resolveOutage(row,button){
+ button.disabled=true;button.textContent="Resolving…";
+ try{const {error}=await db.from("swiper_known_outages").update({resolved_at:new Date().toISOString()}).eq("id",row.id);if(error)throw error;await loadStatus();}
+ catch(error){$("adminMessage").textContent="Could not resolve notice: "+(error.message||"Try again.");button.disabled=false;button.textContent="Mark Resolved";}
+}
+async function publishOutage(){
+ if(!isStatusAdmin())return;
+ const button=$("adminPublish"),title=$("adminTitle").value.trim(),details=$("adminDetails").value.trim(),severity=$("adminSeverity").value,firstUpdate=$("adminFirstUpdate").value.trim();
+ if(title.length<3){$("adminMessage").textContent="Enter a title with at least 3 characters.";return;}
+ button.disabled=true;button.textContent="Publishing…";
+ try{const payload={title,details,severity,created_by:"Swiper Status admin"};if(firstUpdate)payload.updates=[{message:firstUpdate,created_at:new Date().toISOString()}];const {error}=await db.from("swiper_known_outages").insert(payload);if(error)throw error;$("adminTitle").value="";$("adminDetails").value="";$("adminFirstUpdate").value="";$("adminMessage").textContent="Notice published.";await loadStatus();}
+ catch(error){$("adminMessage").textContent="Could not publish notice: "+(error.message||"Try again.");}
+ finally{button.disabled=false;button.textContent="Publish Notice";}
+}
 function renderOutages(rows){
  const list=$("outageList"),resolvedList=$("resolvedList");list.replaceChildren();resolvedList.replaceChildren();
- const activeRows=rows.filter(row=>!row.resolved_at),resolvedRows=rows.filter(row=>!!row.resolved_at);
+ const activeRows=rows.filter(row=>!row.resolved_at),resolvedRows=rows.filter(row=>!!row.resolved_at);activeKnownSeverity=activeRows.some(row=>row.severity==="error")?"error":activeRows.some(row=>row.severity==="warning")?"warning":"none";
  $("resolvedCount").textContent=resolvedRows.length+" resolved";
  if(!resolvedRows.length){const empty=document.createElement("div");empty.className="empty";empty.textContent="No resolved issues yet. Resolved service notices will be kept in this log.";resolvedList.append(empty);}
  for(const row of resolvedRows){
   const card=document.createElement("article");card.className="resolved-card";
   const icon=document.createElement("div");icon.className="resolved-icon";icon.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 4 4L19 6"/></svg>';
-  const body=document.createElement("div"),title=document.createElement("div");title.className="resolved-title";title.textContent=row.title||"Service issue";body.append(title);
-  if(row.details){const details=document.createElement("div");details.className="resolved-details";details.textContent=row.details;body.append(details);}
+  const body=document.createElement("div"),title=document.createElement("div");title.className="resolved-title";title.textContent="(Resolved) "+(row.title||"Service issue");body.append(title);
+  if(row.details){const details=document.createElement("div");details.className="resolved-details";details.textContent=row.details;body.append(details);}renderUpdateHistory(body,row.updates);
   const time=document.createElement("div");time.className="resolved-time";const resolvedDate=new Date(row.resolved_at);time.textContent="Resolved: "+(Number.isNaN(resolvedDate.getTime())?"Time unavailable":resolvedDate.toLocaleString());if(row.started_at){const started=new Date(row.started_at);if(!Number.isNaN(started.getTime()))time.textContent+=" · Started: "+started.toLocaleString();}body.append(time);card.append(icon,body);resolvedList.append(card);
  }
  if(!activeRows.length){
@@ -168,12 +215,14 @@ function renderOutages(rows){
  }
  $("outageCount").textContent=activeRows.length+" active";
  for(const row of activeRows){
-  const card=document.createElement("article");card.className="outage-card";
+  const card=document.createElement("article");card.className="outage-card "+(row.severity==="warning"?"warning":"error");
   const icon=document.createElement("div");icon.className="outage-icon";icon.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 8v5"/><path d="M12 17h.01"/><path d="M10.3 3.9 2.6 17.2A2 2 0 0 0 4.3 20h15.4a2 2 0 0 0 1.7-2.8L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg>';
   const body=document.createElement("div");
-  const title=document.createElement("div");title.className="outage-card-title";title.textContent=row.title||"Service outage";body.append(title);
+  const tag=document.createElement("span");tag.className="severity-tag severity-"+(row.severity==="warning"?"warning":"error");tag.textContent=row.severity==="warning"?"Warning":"Error";body.append(tag);const title=document.createElement("div");title.className="outage-card-title";title.textContent=row.title||"Service issue";body.append(title);
   if(row.details){const details=document.createElement("div");details.className="outage-card-details";details.textContent=row.details;body.append(details);}
   if(row.started_at){const time=document.createElement("div");time.className="outage-card-time";const date=new Date(row.started_at);time.textContent="Started: "+(Number.isNaN(date.getTime())?"Time unavailable":date.toLocaleString());body.append(time);}
+  renderUpdateHistory(body,row.updates);
+  if(isStatusAdmin()){const tools=document.createElement("div");tools.className="admin-outage-tools";const input=document.createElement("textarea");input.maxLength=600;input.placeholder="Add an update (e.g. Fixing… / Monitoring…)";const actions=document.createElement("div");actions.className="admin-outage-actions";const add=document.createElement("button");add.type="button";add.className="secondary";add.textContent="Add Update";add.addEventListener("click",()=>appendOutageUpdate(row,input,add));const resolve=document.createElement("button");resolve.type="button";resolve.className="secondary";resolve.textContent="Mark Resolved";resolve.addEventListener("click",()=>resolveOutage(row,resolve));actions.append(add,resolve);tools.append(input,actions);body.append(tools);}
   card.append(icon,body);list.append(card);
  }
  return true;
@@ -187,8 +236,8 @@ function applyReportStatus(data,hasKnownOutages=activeKnownOutages){
  $("countLabel").textContent=hit?"Unique accounts reporting":"Community reports";
  $("detectedPanel").classList.toggle("show",hit);
  if(hit){
-  $("detectedText").textContent=hasKnownOutages?"An active known service issue is listed below.":count+" unique Swiper accounts reported an outage in this 2-hour reporting window.";
-  setHero("bad",hasKnownOutages?"KNOWN ISSUE DETECTED":"OUTAGE DETECTED",hasKnownOutages?"An active service issue is listed below.":"The community report threshold has been reached.");
+  $("detectedText").textContent=hasKnownOutages?"An active known service notice is listed below.":count+" unique Swiper accounts reported an outage in this 2-hour reporting window.";
+  const isError=activeKnownSeverity==="error"||(!hasKnownOutages&&communityHit);setHero(isError?"bad":activeKnownSeverity==="warning"?"warning":"bad",isError?"ERROR DETECTED":activeKnownSeverity==="warning"?"WARNING":"OUTAGE DETECTED",hasKnownOutages?(activeKnownSeverity==="warning"?"A warning is active. Service may be affected.":"An active error notice is listed below."):"The community report threshold has been reached.");
  }else{
   setHero("ok","No known issues","All monitored services are currently clear, with no active known outages.");
  }
@@ -198,7 +247,7 @@ async function loadStatus(){
  const button=$("refresh");button.disabled=true;button.textContent="Loading…";
  try{
   const [outageResult,statusResult]=await Promise.all([
-   db.from("swiper_known_outages").select("id,title,details,started_at,resolved_at").order("started_at",{ascending:false}).limit(50),
+   db.from("swiper_known_outages").select("id,title,details,severity,updates,started_at,resolved_at").order("started_at",{ascending:false}).limit(50),
    db.rpc("swiper_status_outage_report_status")
   ]);
   if(outageResult.error)throw outageResult.error;
@@ -216,8 +265,10 @@ async function loadStatus(){
   button.textContent="Check Again";
  }
 }
+function isStatusAdmin(){return !!currentSession?.user&&!currentSession.user.is_anonymous&&String(currentSession.user.email||"").toLowerCase()==="mystarsnight@gmail.com";}
 function updateAccountUI(){
  const signedIn=!!currentSession?.user&&!currentSession.user.is_anonymous;
+ $("adminCreatePanel").classList.toggle("show",isStatusAdmin());
  const reportButton=$("reportButton");
  if(reportButton)reportButton.textContent=signedIn?"Report an Outage":"Sign in to Report an Outage";
  if(signedIn){$("loginPanel").classList.remove("open");}
@@ -291,6 +342,7 @@ async function submitReport(){
  }
 }
 $("refresh").addEventListener("click",loadStatus);
+$("adminPublish").addEventListener("click",publishOutage);
 $("reportButton").addEventListener("click",submitReport);
 $("passkeySignInButton").addEventListener("click",signInWithPasskey);
 $("cancelLogin").addEventListener("click",()=>$("loginPanel").classList.remove("open"));
